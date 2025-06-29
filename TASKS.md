@@ -22,11 +22,12 @@ This document outlines the work plan for implementing the RLottery engine.
     - `winnings`
     - `audit_logs`
 - Choose and set up a database migration tool (e.g., `sqlx-cli`, `refinery`).
-- Create the initial database migration scripts.
+- Create the initial database migration scripts. 
 
 ## 3. Core Data Structures and Logic
 - Implement the core data structures in Rust (e.g., `Draw`, `Wager`, `Board`, `Selection`, `WinClass`).
 - Implement the business logic for creating and validating these structures.
+- Add tests for added logic
 - Implement the Xoshiro512** pseudorandom number generator for quick picks and random draws.
 
 ## 4. Configuration Module
