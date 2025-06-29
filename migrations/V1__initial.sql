@@ -1,11 +1,11 @@
 CREATE TABLE lottery_operators (
-    id UUID PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE games (
     id UUID PRIMARY KEY,
-    lottery_operator_id UUID NOT NULL REFERENCES lottery_operators(id),
+    lottery_operator_id INTEGER NOT NULL REFERENCES lottery_operators(id),
     name VARCHAR(255) NOT NULL
 );
 
