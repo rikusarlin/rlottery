@@ -9,3 +9,4 @@ pub mod win_class;
 pub mod winning;
 pub mod audit_log;
 pub mod rng;
+pub mod draw_manager;
