@@ -1,11 +1,14 @@
 use postgres::{Client, NoTls};
+use tonic::transport::Server;
+use api::wagering_service::{WageringService, wagering::wagering_server::WageringServer};
 
 pub mod api;
 pub mod config;
 pub mod core;
 pub mod db;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_config = config::app_config::Config::from_file("config.toml")
         .expect("Failed to load configuration");
     println!("Loaded configuration: {:?}", app_config);
@@ -31,5 +34,14 @@ fn main() {
         }
     }
 
-    println!("Hello, world!");
+    println!("Starting gRPC server on [::1]:50051");
+    let addr = "[::1]:50051".parse()?;
+    let wagering_service = WageringService;
+
+    Server::builder()
+        .add_service(WageringServer::new(wagering_service))
+        .serve(addr)
+        .await?;
+
+    Ok(())
 }

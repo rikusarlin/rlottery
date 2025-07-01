@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package wagering;
+
+import "google/protobuf/timestamp.proto";
+
+// Represents a UUID (Universally Unique Identifier).
+message Uuid {
+  string value = 1;
+}
+
+// Represents a lottery operator configuration.
+message LotteryOperatorConfig {
+  int32 id = 1;
+  string name = 2;
+}
+
+// Represents a game configuration.
+message GameConfig {
+  Uuid id = 1;
+  int32 lottery_operator_id = 2;
+  string name = 3;
+}
+
+// Represents a draw status.
+enum DrawStatus {
+  CREATED = 0;
+  OPEN = 1;
+  CLOSED = 2;
+  DRAWN = 3;
+  WINSET_CALCULATED = 4;
+  WINSET_CONFIRMED = 5;
+  FINALIZED = 6;
+  CANCELLED = 7;
+}
+
+// Represents a draw.
+message Draw {
+  int32 id = 1;
+  Uuid game_id = 2;
+  DrawStatus status = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp modified_at = 5;
+  google.protobuf.Timestamp open_time = 6;
+  google.protobuf.Timestamp close_time = 7;
+  google.protobuf.Timestamp draw_time = 8;
+  google.protobuf.Timestamp winset_calculated_at = 9;
+  google.protobuf.Timestamp winset_confirmed_at = 10;
+}
+
+// Represents a draw level.
+message DrawLevel {
+  Uuid id = 1;
+  Uuid game_id = 2;
+  string name = 3;
+  int32 number_of_selections = 4;
+  int32 min_value = 5;
+  int32 max_value = 6;
+}
+
+// Represents a wager.
+message Wager {
+  Uuid id = 1;
+  Uuid user_id = 2;
+  int32 draw_id = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// Represents a board.
+message Board {
+  Uuid id = 1;
+  Uuid wager_id = 2;
+}
+
+// Represents a selection.
+message Selection {
+  Uuid id = 1;
+  Uuid board_id = 2;
+  Uuid draw_level_id = 3;
+  int32 value = 4;
+}
+
+// Represents a win class type.
+enum WinClassType {
+  FACTOR = 0;
+  CONSTANT = 1;
+  PERCENTAGE = 2;
+  EXTERNAL = 3;
+}
+
+// Represents a win class.
+message WinClass {
+  Uuid id = 1;
+  Uuid game_id = 2;
+  string name = 3;
+  WinClassType type = 4;
+  float factor = 5;
+  float constant = 6;
+  float percentage = 7;
+  float min_cap = 8;
+  float max_cap = 9;
+}
+
+// Represents a winning.
+message Winning {
+  Uuid id = 1;
+  Uuid wager_id = 2;
+  Uuid win_class_id = 3;
+  float amount = 4;
+}
+
+// Represents an audit log.
+message AuditLog {
+  Uuid id = 1;
+  string entity_type = 2;
+  string entity_id = 3;
+  string event_type = 4;
+  string data = 5; // JSON string
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// Request to place a wager.
+message PlaceWagerRequest {
+  Uuid user_id = 1;
+  int32 draw_id = 2;
+  repeated Board boards = 3;
+  bool quick_pick = 4;
+}
+
+// Response after placing a wager.
+message PlaceWagerResponse {
+  Wager wager = 1;
+}
+
+// Request to get wager information.
+message GetWagerRequest {
+  Uuid wager_id = 1;
+}
+
+// Response with wager information.
+message GetWagerResponse {
+  Wager wager = 1;
+}
+
+service Wagering {
+  rpc PlaceWager (PlaceWagerRequest) returns (PlaceWagerResponse);
+  rpc GetWager (GetWagerRequest) returns (GetWagerResponse);
+}
