@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use crate::core::draw::{Draw, DrawStatus};
+use crate::core::draw::{Draw, DrawStatus, WinningNumbers};
+use crate::core::draw_level::DrawLevel;
+use crate::core::rng::Rng;
 use uuid::Uuid;
 
 pub struct DrawManager;
@@ -21,6 +23,7 @@ impl DrawManager {
             draw_time: None,
             winset_calculated_at: None,
             winset_confirmed_at: None,
+            winning_numbers: Vec::new(),
         }
     }
 
@@ -77,6 +80,32 @@ impl DrawManager {
 
     pub fn is_draw_open(draw: &Draw) -> bool {
         draw.status == DrawStatus::Open && Utc::now() >= draw.open_time && Utc::now() < draw.close_time
+    }
+
+    pub fn draw_winning_numbers(
+        draw: &mut Draw,
+        draw_levels: &[DrawLevel],
+        seed: [u8; 64],
+    ) {
+        let mut rng = Rng::new(seed);
+        let mut winning_numbers_vec = Vec::new();
+
+        for level in draw_levels {
+            let mut numbers = Vec::new();
+            while numbers.len() < level.number_of_selections as usize {
+                let num = (rng.next_u64() % (level.max_value - level.min_value + 1) as u64) as i32
+                    + level.min_value;
+                if !numbers.contains(&num) {
+                    numbers.push(num);
+                }
+            }
+            numbers.sort_unstable();
+            winning_numbers_vec.push(WinningNumbers {
+                draw_level_id: level.id,
+                numbers,
+            });
+        }
+        draw.winning_numbers = winning_numbers_vec;
     }
 
     // Placeholder for scheduling logic

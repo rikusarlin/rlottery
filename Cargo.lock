@@ -1158,20 +1158,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
-name = "postgres"
-version = "0.19.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "363e6dfbdd780d3aa3597b6eb430db76bb315fa9bad7fae595bb8def808b8470"
-dependencies = [
- "bytes",
- "fallible-iterator",
- "futures-util",
- "log",
- "tokio",
- "tokio-postgres",
-]
-
-[[package]]
 name = "postgres-protocol"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1407,12 +1393,13 @@ dependencies = [
  "async-trait",
  "cfg-if",
  "log",
- "postgres",
  "regex",
  "serde",
  "siphasher",
  "thiserror 1.0.69",
  "time",
+ "tokio",
+ "tokio-postgres",
  "toml",
  "url",
  "walkdir",
@@ -1467,7 +1454,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "config",
- "postgres",
  "prost",
  "prost-types",
  "rand_xoshiro",
@@ -1477,6 +1463,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-cron-scheduler",
+ "tokio-postgres",
  "tonic",
  "tonic-build",
  "uuid",

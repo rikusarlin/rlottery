@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package admin;
+
+import "google/protobuf/timestamp.proto";
+// Represents a UUID (Universally Unique Identifier).
+message Uuid {
+  string value = 1;
+}
+
+// Represents winning numbers for a draw level.
+message WinningNumbers {
+  Uuid draw_level_id = 1;
+  repeated int32 numbers = 2;
+}
+
+// Request to receive externally drawn numbers.
+message ReceiveExternalDrawNumbersRequest {
+  int32 draw_id = 1;
+  repeated WinningNumbers winning_numbers = 2;
+}
+
+// Response after receiving externally drawn numbers.
+message ReceiveExternalDrawNumbersResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+service Admin {
+  rpc ReceiveExternalDrawNumbers (ReceiveExternalDrawNumbersRequest) returns (ReceiveExternalDrawNumbersResponse);
+}

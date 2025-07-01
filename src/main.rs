@@ -1,6 +1,7 @@
-use postgres::{Client, NoTls};
+use tokio_postgres::NoTls;
 use tonic::transport::Server;
 use api::wagering_service::{WageringService, wagering::wagering_server::WageringServer};
+use api::admin_service::{AdminService, admin::admin_server::AdminServer};
 
 pub mod api;
 pub mod config;
@@ -14,10 +15,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loaded configuration: {:?}", app_config);
 
     // This assumes a local postgresql database `rlottery` exists with user `postgres` and password `postgres`
-    let mut client = Client::connect("postgresql://postgres:postgres@localhost/rlottery", NoTls)
+    let (mut client, connection) = tokio_postgres::connect("postgresql://rlottery:password123@localhost/rlottery", NoTls)
+        .await
         .expect("Failed to connect to Postgres");
 
-    match db::run_migrations(&mut client) {
+    tokio::spawn(async move { 
+        if let Err(e) = connection.await {
+            eprintln!("database connection error: {}", e);
+        }
+    });
+
+    match db::run_migrations(&mut client).await {
         Ok(report) => {
             for migration in report.applied_migrations() {
                 println!(
@@ -34,14 +42,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("Starting gRPC server on [::1]:50051");
-    let addr = "[::1]:50051".parse()?;
-    let wagering_service = WageringService;
+    println!("Starting gRPC servers...");
 
-    Server::builder()
+    let wagering_service = WageringService;
+    let admin_service = AdminService;
+
+    let wagering_addr = "[::1]:50051".parse()?;
+    let admin_addr = "[::1]:50052".parse()?;
+
+    let wagering_server = Server::builder()
         .add_service(WageringServer::new(wagering_service))
-        .serve(addr)
-        .await?;
+        .serve(wagering_addr);
+
+    let admin_server = Server::builder()
+        .add_service(AdminServer::new(admin_service))
+        .serve(admin_addr);
+
+    tokio::try_join!(wagering_server, admin_server)?;
 
     Ok(())
 }
+

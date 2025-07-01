@@ -98,3 +98,21 @@ Winset calculation
 - Enable transactional "extension points" for all draw and wager state changes so that necessary operations (such as wallet operations or logging) can be added later. Implement default exension point implementations that do audit logging to database. Audit logs should contain at least the JSON representation of the changed object.
 - Use Xoshiro512** as pseudorandom number generator
 - Implement unit tests for core operations, and integration tests that test the system from API perspective
+
+## Running RLottery locally
+Pull Postgres 17 image:
+```
+docker pull postgres:17
+```
+Start container:
+```
+docker run --name rlottery-postgres-17 -e POSTGRES_PASSWORD=password123 -e POSTGRES_USER=rlottery -e POSTGRES_DB=rlottery -p 5432:5432 -d postgres:17
+```
+Build project:
+```
+cargo build
+```
+Run project:
+```
+./target/debug/rlottery
+```

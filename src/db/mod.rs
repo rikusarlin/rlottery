@@ -5,6 +5,6 @@ mod migrations {
     embed_migrations!("migrations");
 }
 
-pub fn run_migrations(client: &mut postgres::Client) -> Result<Report, Error> {
-    migrations::migrations::runner().run(client)
+pub async fn run_migrations(client: &mut tokio_postgres::Client) -> Result<Report, Error> {
+    migrations::migrations::runner().run_async(client).await
 }

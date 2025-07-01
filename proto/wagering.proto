@@ -46,6 +46,12 @@ message Draw {
   google.protobuf.Timestamp draw_time = 8;
   google.protobuf.Timestamp winset_calculated_at = 9;
   google.protobuf.Timestamp winset_confirmed_at = 10;
+  repeated WinningNumbers winning_numbers = 11;
+}
+
+message WinningNumbers {
+  Uuid draw_level_id = 1;
+  repeated int32 numbers = 2;
 }
 
 // Represents a draw level.

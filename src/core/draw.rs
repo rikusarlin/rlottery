@@ -26,4 +26,11 @@ pub struct Draw {
     pub draw_time: Option<DateTime<Utc>>,
     pub winset_calculated_at: Option<DateTime<Utc>>,
     pub winset_confirmed_at: Option<DateTime<Utc>>,
+    pub winning_numbers: Vec<WinningNumbers>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WinningNumbers {
+    pub draw_level_id: Uuid,
+    pub numbers: Vec<i32>,
 }
