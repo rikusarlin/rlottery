@@ -15,3 +15,5 @@ chrono = { version = "0.4", features = ["serde"] }
 refinery = { version = "0.8", features = ["postgres"] }
 refinery-macros = "0.8"
 serde_json = "1.0"
+config = { version = "0.14", features = ["toml"] }
+

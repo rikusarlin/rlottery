@@ -6,6 +6,10 @@ pub mod core;
 pub mod db;
 
 fn main() {
+    let app_config = config::app_config::Config::from_file("config.toml")
+        .expect("Failed to load configuration");
+    println!("Loaded configuration: {:?}", app_config);
+
     // This assumes a local postgresql database `rlottery` exists with user `postgres` and password `postgres`
     let mut client = Client::connect("postgresql://postgres:postgres@localhost/rlottery", NoTls)
         .expect("Failed to connect to Postgres");

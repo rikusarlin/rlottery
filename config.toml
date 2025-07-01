@@ -1,0 +1,8 @@
+[lottery_operator]
+id = 1
+name = "MyLotteryOperator"
+
+[game]
+id = "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+lottery_operator_id = 1
+name = "MyAwesomeLotto"
