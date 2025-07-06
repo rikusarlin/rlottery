@@ -64,26 +64,34 @@ message DrawLevel {
   int32 max_value = 6;
 }
 
+enum GameType {
+  NORMAL = 0;
+  SYSTEM = 1;
+}
+
 // Represents a wager.
 message Wager {
   Uuid id = 1;
   Uuid user_id = 2;
   int32 draw_id = 3;
-  google.protobuf.Timestamp created_at = 4;
+  GameType game_type = 4;
+  uint32 system_game_level = 5;
+  double stake = 7;
+  double price = 8;
+  google.protobuf.Timestamp created_at = 6;
 }
 
 // Represents a board.
 message Board {
   Uuid id = 1;
-  Uuid wager_id = 2;
+  repeated Selection selections = 2;
 }
 
 // Represents a selection.
 message Selection {
   Uuid id = 1;
-  Uuid board_id = 2;
-  Uuid draw_level_id = 3;
-  int32 value = 4;
+  Uuid draw_level_id = 2;
+  int32 value = 3;
 }
 
 // Represents a win class type.
@@ -128,14 +136,16 @@ message AuditLog {
 // Request to place a wager.
 message PlaceWagerRequest {
   Uuid user_id = 1;
-  int32 draw_id = 2;
+  uint32 number_of_draws = 2;
   repeated Board boards = 3;
   bool quick_pick = 4;
+  GameType game_type = 5;
+  uint32 system_game_level = 6;
 }
 
 // Response after placing a wager.
 message PlaceWagerResponse {
-  Wager wager = 1;
+  repeated Wager wagers = 1;
 }
 
 // Request to get wager information.

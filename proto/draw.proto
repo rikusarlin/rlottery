@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package draw;
+
+import "wagering.proto";
+
+service DrawService {
+  rpc GetOpenDraws (GetOpenDrawsRequest) returns (GetOpenDrawsResponse);
+}
+
+message GetOpenDrawsRequest {
+  // Optionally filter by game_id
+  wagering.Uuid game_id = 1;
+}
+
+message GetOpenDrawsResponse {
+  repeated wagering.Draw draws = 1;
+}

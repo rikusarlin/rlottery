@@ -37,7 +37,7 @@ Drawing
   - The number needs to be one bigger than the maximum number of draws in which the wager can participate
   - When a draw is created, it is not yet open, it is in "Created" state. That is, we can technically have draws that exist but are not yet open.
 - The engines supports calendar based scheduling and inteval based scheduling
-  - Calendar based example: a draw every Tuesday 21.30 and every Friday 22.00
+  - Calendar based example: a draw every Tuesday 17.30 and 21.30 and every Friday 22.00
 - Draw has following states
   - Created: A draw has been technically created, but is not yet open
   - Open: A draw is open for wagering

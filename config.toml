@@ -6,3 +6,19 @@ name = "MyLotteryOperator"
 id = "a1b2c3d4-e5f6-7890-1234-567890abcdef"
 lottery_operator_id = 1
 name = "MyAwesomeLotto"
+open_draws = 15
+allowed_participations = [1, 2, 3, 4, 5, 6, 7, 14]
+allowed_system_game_levels = [7, 8, 9, 10, 11]
+closed_state_duration_seconds = 300
+
+[[game.draw_levels]]
+name = "primary"
+selections = 6
+
+[[game.draw_levels]]
+name = "secondary"
+selections = 1
+dependent_on = "primary"
+
+[game.schedule.daily]
+time = "21:50"

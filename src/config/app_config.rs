@@ -7,10 +7,31 @@ pub struct LotteryOperatorConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DrawLevelConfig {
+    pub name: String,
+    pub selections: u32,
+    pub dependent_on: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScheduleConfig {
+    Daily { time: String },
+    Weekly { days: Vec<String>, time: String },
+    Interval { minutes: u64 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameConfig {
     pub id: String,
     pub lottery_operator_id: i32,
     pub name: String,
+    pub draw_levels: Vec<DrawLevelConfig>,
+    pub open_draws: u32,
+    pub allowed_participations: Vec<u32>,
+    pub allowed_system_game_levels: Vec<u32>,
+    pub closed_state_duration_seconds: u64,
+    pub schedule: ScheduleConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
