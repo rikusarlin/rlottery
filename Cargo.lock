@@ -1483,6 +1483,7 @@ dependencies = [
  "rand_xoshiro",
  "refinery",
  "refinery-macros",
+ "rlottery",
  "serde",
  "serde_json",
  "strum",

@@ -1,30 +1,33 @@
 use std::env;
 use tokio_postgres::NoTls;
 use tonic::transport::Server;
-use api::wagering_service::{WageringService, wagering::wagering_server::WageringServer};
-use api::admin_service::{AdminService, admin::admin_server::AdminServer};
-use api::draw_service::{DrawService, draw::draw_service_server::DrawServiceServer};
-use crate::core::draw_manager::DrawManager;
+use rlottery::api::wagering_service::{WageringService, wagering::wagering_server::WageringServer};
+use rlottery::api::admin_service::{AdminService, admin::admin_server::AdminServer};
+use rlottery::api::draw_service::{DrawService, draw::draw_service_server::DrawServiceServer};
+use rlottery::core::draw_manager::DrawManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing_subscriber;
 use tracing::{info, error};
 
-pub mod api;
-pub mod config;
-pub mod core;
-pub mod db;
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let app_config = config::app_config::Config::from_file("config.toml")
+    let config_path = env::var("APP_CONFIG_PATH")
+        .unwrap_or_else(|_| "config.toml".to_string());
+
+    let app_config = rlottery::config::app_config::Config::from_file(&config_path)
         .expect("Failed to load configuration");
     info!("Loaded configuration: {:?}", app_config);
 
     // This assumes a local postgresql database `rlottery` exists with user `postgres` and password `postgres`
-    let (mut client_raw, connection) = tokio_postgres::connect("postgresql://rlottery:password123@localhost/rlottery", NoTls)
+    let database_url = env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://rlottery:password123@localhost/rlottery".to_string());
+
+    let (mut client_raw, connection) = tokio_postgres::connect(&database_url, NoTls)
         .await
         .expect("Failed to connect to Postgres");
 
@@ -36,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && args[1] == "run-migrations" {
-        match db::run_migrations(&mut client_raw).await {
+        match rlottery::db::run_migrations(&mut client_raw).await {
             Ok(report) => {
                 for migration in report.applied_migrations() {
                     info!(
@@ -60,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run migrations on startup if not running as a migration command
     {
         let mut locked_client = client.lock().await;
-        match db::run_migrations(&mut *locked_client).await {
+        match rlottery::db::run_migrations(&mut *locked_client).await {
             Ok(report) => {
                 for migration in report.applied_migrations() {
                     info!(
@@ -79,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Upsert lottery operator
         let operator_name = &app_config.lottery_operator.name;
-        db::operator::upsert_lottery_operator(&locked_client, operator_name)
+        rlottery::db::operator::upsert_lottery_operator(&locked_client, operator_name)
             .await
             .expect("Failed to upsert lottery operator");
 
