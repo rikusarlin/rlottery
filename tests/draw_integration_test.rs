@@ -1,107 +1,222 @@
-use tokio::process::{Command, Child};
-use tokio::time::{sleep, Duration, timeout};
-use tonic::transport::Channel;
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 use rlottery::api::draw_service::draw::draw_service_client::DrawServiceClient;
 use rlottery::api::draw_service::draw::GetOpenDrawsRequest;
+use rlottery::api::wagering_service::wagering::{PlaceWagerRequest, Board, Selection, Uuid as WageringUuid, GameType};
+use rlottery::api::wagering_service::wagering::wagering_client::WageringClient;
+use rlottery::api::admin_service::admin::admin_client::AdminClient;
+use std::process::Stdio;
+use std::time::Duration;
+use tempfile::NamedTempFile;
+use testcontainers_modules::postgres::Postgres;
+use testcontainers_modules::testcontainers::{
+    runners::AsyncRunner, ContainerAsync,
+};
+use tokio::{
+    process::{Command, Child},
+    time::{sleep, timeout},
+    io::{AsyncBufReadExt, BufReader},
+};
 use tokio_postgres::NoTls;
+use tonic::transport::Channel;
+use uuid::Uuid;
 
-async fn setup_test_environment() -> (DrawServiceClient<Channel>, Child) {
-    let database_url = "postgresql://rlottery:password123@localhost/rlottery";
-    let admin_database_url = "postgresql://rlottery:password123@localhost/postgres"; // Connect to default postgres DB for cleaning
+pub struct TestEnv {
+    _container: ContainerAsync<Postgres>,
+    pub database_url: String,
+}
 
-    // 1. Clean the database
-    let mut admin_client_opt = None;
-    let max_db_retries = 10;
-    let mut db_retries = 0;
-    while admin_client_opt.is_none() && db_retries < max_db_retries {
-        db_retries += 1;
-        sleep(Duration::from_secs(2)).await;
-        match tokio_postgres::connect(admin_database_url, NoTls).await {
-            Ok((client, connection)) => {
-                tokio::spawn(async move {
-                    if let Err(e) = connection.await {
-                        eprintln!("admin database connection error: {}", e);
-                    }
-                });
-                admin_client_opt = Some(client);
-            },
-            Err(e) => {
-                eprintln!("Attempt {} to connect to admin database failed: {}. Retrying...", db_retries, e);
-            }
+fn generate_temp_config() -> NamedTempFile {
+    let temp_file = tempfile::Builder::new()
+        .suffix(".toml")
+        .tempfile()
+        .expect("Failed to create temp config");
+
+    let config_content = format!(
+        r#"
+[server]
+grpc_address = "127.0.0.1:0"
+
+[database]
+url = "" # Will be overridden via DATABASE_URL env
+
+[lottery_operator]
+id = 1
+name = "TestLotteryOperator"
+
+[game]
+id = "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+lottery_operator_id = 1
+name = "TestAwesomeLotto"
+open_draws = 5
+allowed_participations = [1, 2, 3]
+allowed_system_game_levels = [7, 8]
+closed_state_duration_seconds = 500
+
+[[game.draw_levels]]
+name = "primary"
+selections = 6
+
+[[game.draw_levels]]
+name = "secondary"
+selections = 1
+dependent_on = "primary"
+
+[game.schedule.daily]
+time = "18:00"
+
+[env]
+RUST_TEST_THREADS = "1"
+"#
+    );
+
+    std::fs::write(temp_file.path(), config_content).expect("Failed to write config");
+    temp_file
+}
+
+
+pub struct RunningApp {
+    pub config_path: std::path::PathBuf,
+    pub child: Child,
+    pub _config_file: NamedTempFile,
+    pub _env:TestEnv,
+}
+
+impl Drop for RunningApp {
+    // Terminate the server when closing the test
+    fn drop(&mut self) {
+        if let Some(id) = self.child.id() {
+            let _ = signal::kill(Pid::from_raw(id as i32), Signal::SIGTERM);
+        } else {
+            eprintln!("Failed to get process ID to send SIGTERM");
         }
     }
-    let admin_client = admin_client_opt.expect("Failed to connect to admin database after multiple retries");
+}
 
-    // Drop and recreate the test database
-    admin_client.execute("DROP DATABASE IF EXISTS rlottery WITH (FORCE);", &[]).await.expect("Failed to drop database");
-    admin_client.execute("CREATE DATABASE rlottery;", &[]).await.expect("Failed to create database");
-    // The admin_client will be dropped here, closing its connection.
+#[derive(Default)]
+struct GrpcPorts {
+    wagering: u16,
+    admin: u16,
+    draw: u16,
+}
 
-    // 2. Connect to the newly created rlottery database and run migrations
-    let mut db_client_opt = None;
-    db_retries = 0; // Reset retries for the rlottery database connection
-    while db_client_opt.is_none() && db_retries < max_db_retries {
-        db_retries += 1;
-        sleep(Duration::from_secs(2)).await;
-        match tokio_postgres::connect(database_url, NoTls).await {
-            Ok((client, connection)) => {
-                tokio::spawn(async move {
-                    if let Err(e) = connection.await {
-                        eprintln!("rlottery database connection error: {}", e);
-                    }
-                });
-                db_client_opt = Some(client);
-            },
-            Err(e) => {
-                eprintln!("Attempt {} to connect to rlottery database failed: {}. Retrying...", db_retries, e);
-            }
-        }
-    }
-    let mut db_client = db_client_opt.expect("Failed to connect to rlottery database after multiple retries");
+pub async fn setup_test_environment() -> (
+  DrawServiceClient<Channel>,
+  WageringClient<Channel>,
+  AdminClient<Channel>,
+  RunningApp) {
 
-    // Run migrations
-    rlottery::db::run_migrations(&mut db_client).await.expect("Failed to run migrations");
 
-    // Build the application
-    Command::new("cargo")
-        .arg("build")
-        .output()
+    let container = Postgres::default()
+        .start()
         .await
-        .expect("Failed to build rlottery");
+        .expect("failed to start container");
 
-    // Start the rlottery application in the background
-    let child = Command::new("cargo")
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("failed to get port");
+
+    let database_url = format!("postgres://postgres:postgres@127.0.0.1:{}/postgres", port);
+
+    // Wait for DB
+    let mut db_client = loop {
+        match tokio_postgres::connect(&database_url, NoTls).await {
+            Ok((client, connection)) => {
+                tokio::spawn(async move {
+                    if let Err(e) = connection.await {
+                        eprintln!("DB connection error: {}", e);
+                    }
+                });
+                break client;
+            }
+            Err(_) => tokio::time::sleep(Duration::from_secs(1)).await,
+        }
+    };
+
+    rlottery::db::run_migrations(&mut db_client).await.expect("Migrations failed");
+
+    let temp_config = generate_temp_config();
+    let config_path = temp_config.path().to_path_buf();
+
+    let mut child = Command::new("cargo")
         .arg("run")
-        .env("DATABASE_URL", database_url)
-        .env("APP_CONFIG_PATH", "./tests/test_config.toml") // Use a specific test config
+        .env("DATABASE_URL", &database_url)
+        .env("APP_CONFIG_PATH", config_path.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("Failed to start rlottery application");
 
-    // Retry connecting to the gRPC server
-    let mut client_opt = None;
-    let max_grpc_retries = 10;
-    let mut grpc_retries = 0;
 
-    while client_opt.is_none() && grpc_retries < max_grpc_retries {
-        grpc_retries += 1;
-        sleep(Duration::from_secs(2)).await; // Wait before retrying
-        match timeout(Duration::from_secs(1), Channel::from_static("http://[::1]:50053").connect()).await {
-            Ok(Ok(channel)) => {
-                client_opt = Some(DrawServiceClient::new(channel));
-            },
+    let stdout = child.stdout.take().expect("No stdout");
+    let stderr = child.stderr.take().expect("No stderr");
+
+    let mut stdout_reader = BufReader::new(stdout).lines();
+    let mut stderr_reader = BufReader::new(stderr).lines();
+
+    // Spawn two async tasks to read both streams concurrently
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = stdout_reader.next_line().await {
+            println!("[STDOUT] {}", line);
+        }
+    });
+
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = stderr_reader.next_line().await {
+            eprintln!("[STDERR] {}", line);
+        }
+    });
+
+    let ports = GrpcPorts {
+        wagering: 50051,
+        admin: 50052,
+        draw: 50053,
+    };
+
+    let draw_channel = connect_with_retry(ports.draw, "Draw").await;
+    let wagering_channel = connect_with_retry(ports.wagering, "Wagering").await;
+    let admin_channel = connect_with_retry(ports.admin, "Admin").await;
+
+    let env = TestEnv {
+      _container: container,
+      database_url: database_url
+    };
+
+    (
+        DrawServiceClient::new(draw_channel),
+        WageringClient::new(wagering_channel),
+        AdminClient::new(admin_channel),
+        RunningApp {
+            config_path,
+            child,
+            _config_file: temp_config,
+            _env: env,
+        },
+    )
+}
+
+async fn connect_with_retry(port: u16, label: &str) -> Channel {
+    let endpoint = format!("http://[::1]:{}", port);
+    let mut retries = 0;
+
+    while retries < 10 {
+        retries += 1;
+        match timeout(Duration::from_secs(2), Channel::from_shared(endpoint.clone()).unwrap().connect()).await {
+            Ok(Ok(channel)) => return channel,
             _ => {
-                eprintln!("Attempt {} to connect to gRPC server failed. Retrying...", grpc_retries);
+                eprintln!("Attempt {} to connect to {} gRPC server at {} failed. Retrying...", retries, label, endpoint);
+                sleep(Duration::from_secs(1)).await;
             }
         }
     }
 
-    let client = client_opt.expect("Failed to connect to gRPC server after multiple retries");
-    (client, child)
+    panic!("Failed to connect to {} gRPC server after multiple retries", label);
 }
 
 #[tokio::test]
 async fn test_draw_creation_and_fetch() {
-    let (mut client, mut child) = setup_test_environment().await;
+    let (mut draw_client, _wagering_client, _admin_client, _app) = setup_test_environment().await;
 
     // Give some time for draws to be created by the scheduler
     sleep(Duration::from_secs(15)).await;
@@ -110,12 +225,67 @@ async fn test_draw_creation_and_fetch() {
         game_id: None,
     });
 
-    let response = client.get_open_draws(request).await.expect("Failed to get open draws");
+    let response = draw_client.get_open_draws(request).await.expect("Failed to get open draws");
     let draws = response.into_inner().draws;
 
     assert!(!draws.is_empty(), "No draws found in the database");
     // Further assertions can be added here to check draw content, status, times, etc.
+}
 
-    // Terminate the spawned application process
-    child.kill().await.expect("Failed to kill rlottery process");
+#[tokio::test]
+async fn test_place_wager_on_open_draws() {
+    let (mut draw_client, mut wagering_client, _admin_client, _app) = setup_test_environment().await;
+
+    // Give some time for draws to be created by the scheduler
+    sleep(Duration::from_secs(15)).await;
+
+    let get_draws_request = tonic::Request::new(GetOpenDrawsRequest {
+        game_id: None,
+    });
+
+    let get_draws_response = draw_client.get_open_draws(get_draws_request).await.expect("Failed to get open draws");
+    let draws = get_draws_response.into_inner().draws;
+
+    assert!(draws.len() >= 2, "Not enough open draws to place wager");
+
+    let user_id = Uuid::new_v4();
+
+    let place_wager_request = tonic::Request::new(PlaceWagerRequest {
+        user_id: Some(WageringUuid { value: user_id.to_string() }),
+        number_of_draws: 2,
+        boards: vec![
+            Board {
+                id: Some(WageringUuid { value: Uuid::new_v4().to_string() }),
+                selections: vec![
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 1 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 2 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 3 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 4 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 5 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 6 },
+                ],
+            },
+            Board {
+                id: Some(WageringUuid { value: Uuid::new_v4().to_string() }),
+                selections: vec![
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 7 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 8 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 9 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 10 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 11 },
+                    Selection { id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), draw_level_id: Some(WageringUuid { value: Uuid::new_v4().to_string() }), value: 12 },
+                ],
+            },
+        ],
+        quick_pick: false,
+        game_type: GameType::Normal.into(),
+        system_game_level: 0,
+    });
+
+    let place_wager_response = wagering_client.place_wager(place_wager_request).await.expect("Failed to place wager");
+    let wagers = place_wager_response.into_inner().wagers;
+
+    assert_eq!(wagers.len(), 2, "Expected 2 wagers to be placed");
+    assert_eq!(wagers[0].draw_id, draws[0].id, "First wager should be for the first draw");
+    assert_eq!(wagers[1].draw_id, draws[1].id, "Second wager should be for the second draw");
 }

@@ -1,12 +1,13 @@
-use std::env;
-use tokio_postgres::NoTls;
-use tonic::transport::Server;
 use rlottery::api::wagering_service::{WageringService, wagering::wagering_server::WageringServer};
 use rlottery::api::admin_service::{AdminService, admin::admin_server::AdminServer};
 use rlottery::api::draw_service::{DrawService, draw::draw_service_server::DrawServiceServer};
 use rlottery::core::draw_manager::DrawManager;
+use std::env;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::{Mutex, oneshot};
+use tokio_postgres::NoTls;
+use tonic::transport::Server;
 use tracing_subscriber;
 use tracing::{info, error};
 
@@ -14,6 +15,16 @@ use tracing::{info, error};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (tx, rx) = oneshot::channel::<()>();
+
+    // Handle graceful shutdown on signal termination (SIGTERM or SIGINT)
+    tokio::spawn(async move {
+        let mut sigterm = signal(SignalKind::terminate()).expect("Unable to register signal handler");
+        let _ = sigterm.recv().await; // Wait for a termination signal (Ctrl+C or SIGTERM)
+        info!("Termination signal received. Shutting down servers...");
+        tx.send(()).expect("Failed to send shutdown signal");
+    });
+
     tracing_subscriber::fmt::init();
 
     let config_path = env::var("APP_CONFIG_PATH")
@@ -109,13 +120,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting gRPC servers...");
 
-    let wagering_service = WageringService;
+    let wagering_service = WageringService::new(client.clone());
     let admin_service = AdminService;
     let draw_service = DrawService::new(client.clone());
 
     let wagering_addr = "[::1]:50051".parse()?;
     let admin_addr = "[::1]:50052".parse()?;
     let draw_addr = "[::1]:50053".parse()?;
+
+    println!("Starting Wagering gRPC server at {}", wagering_addr);
+    println!("Starting Admin gRPC server at {}", admin_addr);
+    println!("Starting Draw gRPC server at {}", draw_addr);
 
     let wagering_server = Server::builder()
         .add_service(WageringServer::new(wagering_service))
@@ -127,9 +142,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let draw_server = Server::builder()
         .add_service(DrawServiceServer::new(draw_service))
-        .serve(draw_addr);
+       .serve(draw_addr);
 
     tokio::try_join!(wagering_server, admin_server, draw_server)?;
+
+    // Wait until we receive interruption
+    let _ = rx.await;
 
     Ok(())
 }

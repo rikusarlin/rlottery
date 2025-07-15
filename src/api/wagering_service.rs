@@ -1,28 +1,42 @@
 use tonic::{Request, Response, Status};
 use prost_types;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio_postgres::Client;
+use crate::db;
+use tracing::{info, error};
+use chrono::Utc;
 
 pub mod wagering {
     tonic::include_proto!("wagering");
 }
 
 use wagering::{
-    wagering_server::Wagering,
     PlaceWagerRequest,
     PlaceWagerResponse,
     GetWagerRequest,
     GetWagerResponse,
 };
 
-#[derive(Debug, Default)]
-pub struct WageringService;
+pub struct WageringService{
+  client: Arc<Mutex<Client>>,
+}
+
+impl WageringService {
+    pub fn new(client: Arc<Mutex<Client>>) -> Self {
+        WageringService { client }
+    }
+}
 
 #[tonic::async_trait]
-impl Wagering for WageringService {
+impl wagering::wagering_server::Wagering for WageringService {
     async fn place_wager(
         &self,
         request: Request<PlaceWagerRequest>,
     ) -> Result<Response<PlaceWagerResponse>, Status> {
-        println!("Got a request: {:?}", request);
+        info!("Got a request: {:?}", request);
+
+        let client_locked = self.client.lock().await;
 
         let request_data = request.into_inner();
         let user_id = request_data.user_id.unwrap_or_default().value;
@@ -40,7 +54,20 @@ impl Wagering for WageringService {
             _ => return Err(Status::invalid_argument("Invalid game type")),
         };
 
-        for _ in 0..number_of_draws {
+        // Get open draws
+        let open_draws = db::draws::get_active_draws(&client_locked, uuid::Uuid::parse_str("a1b2c3d4-e5f6-7890-1234-567890abcdef").unwrap())
+            .await
+            .map_err(|e| {
+                error!("Failed to get open draws: {}", e);
+                Status::internal(format!("Failed to get open draws: {}", e))
+            })?;
+
+        if open_draws.is_empty() {
+            return Err(Status::failed_precondition("No open draws available to place wager"));
+        }
+
+        for i in 0..number_of_draws {
+            let draw_id = open_draws[i as usize].id;
             let wager_id = uuid::Uuid::new_v4();
             let user_uuid = uuid::Uuid::parse_str(&user_id).unwrap_or_default();
 
@@ -57,23 +84,44 @@ impl Wagering for WageringService {
                         value: selection_proto.value,
                     });
                 }
-                boards.push(crate::core::board::Board {
+                let new_board = crate::core::board::Board {
                     id: board_id,
                     wager_id: wager_id,
                     selections: selections,
-                });
+                };
+                db::wagers::insert_board(&client_locked, &new_board)
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to insert board: {}", e);
+                        Status::internal(format!("Failed to insert board: {}", e))
+                    })?;
+                for selection in &new_board.selections {
+                    db::wagers::insert_selection(&client_locked, selection, new_board.id)
+                        .await
+                        .map_err(|e| {
+                            error!("Failed to insert selection: {}", e);
+                            Status::internal(format!("Failed to insert selection: {}", e))
+                        })?;
+                }
+                boards.push(new_board);
             }
 
             let new_wager = crate::core::wager::Wager {
                 id: wager_id,
                 user_id: user_uuid,
-                draw_id: 0, // TODO: Get actual draw_id
+                draw_id: draw_id,
                 game_type: game_type.clone(),
                 system_game_level: system_game_level_proto,
                 stake: 1.0, // TODO: Calculate actual stake
                 price: 1.0 * number_of_draws as f64, // TODO: Calculate actual price
-                created_at: chrono::Utc::now(),
+                created_at: Utc::now(),
             };
+            db::wagers::insert_wager(&client_locked, &new_wager)
+                .await
+                .map_err(|e| {
+                    error!("Failed to insert wager: {}", e);
+                    Status::internal(format!("Failed to insert wager: {}", e))
+                })?;
             created_wagers.push(new_wager);
         }
 
@@ -95,6 +143,7 @@ impl Wagering for WageringService {
                 }),
             }).collect(),
         };
+        info!("Returning PlaceWagerResponse: {:?}", reply);
         Ok(Response::new(reply))
     }
 
@@ -102,11 +151,12 @@ impl Wagering for WageringService {
         &self,
         request: Request<GetWagerRequest>,
     ) -> Result<Response<GetWagerResponse>, Status> {
-        println!("Got a request: {:?}", request);
+        info!("Got a GetWagerRequest: {:?}", request);
 
         let reply = GetWagerResponse {
             wager: None, // TODO: Implement actual wager retrieval logic
         };
+        info!("Returning GetWagerResponse: {:?}", reply);
         Ok(Response::new(reply))
     }
 }

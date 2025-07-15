@@ -2,6 +2,7 @@ use refinery::{Error, Report};
 
 pub mod draws;
 pub mod operator;
+pub mod wagers;
 
 mod migrations {
     use refinery::embed_migrations;
