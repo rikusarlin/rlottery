@@ -2,6 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LotteryOperator {
-    pub id: i32,
+    pub id: u32,
     pub name: String,
 }

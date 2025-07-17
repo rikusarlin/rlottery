@@ -5,7 +5,7 @@ use rlottery::core::draw_manager::DrawManager;
 use std::env;
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::Mutex;
 use tokio_postgres::NoTls;
 use tonic::transport::Server;
 use tracing_subscriber;
@@ -15,16 +15,6 @@ use tracing::{info, error};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (tx, rx) = oneshot::channel::<()>();
-
-    // Handle graceful shutdown on signal termination (SIGTERM or SIGINT)
-    tokio::spawn(async move {
-        let mut sigterm = signal(SignalKind::terminate()).expect("Unable to register signal handler");
-        let _ = sigterm.recv().await; // Wait for a termination signal (Ctrl+C or SIGTERM)
-        info!("Termination signal received. Shutting down servers...");
-        tx.send(()).expect("Failed to send shutdown signal");
-    });
-
     tracing_subscriber::fmt::init();
 
     let config_path = env::var("APP_CONFIG_PATH")
@@ -102,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let game_name = &app_config.game.name;
         let operator_id = app_config.game.lottery_operator_id;
         let upsert_game_query = "
-            INSERT INTO games (id, lottery_operator_id, name) VALUES ($1, $2, $3)
+            INSERT INTO game (id, lottery_operator_id, name) VALUES ($1, $2, $3)
             ON CONFLICT (id) DO UPDATE SET lottery_operator_id = $2, name = $3
         ";
         locked_client.execute(upsert_game_query, &[&game_id, &operator_id, &game_name]).await.expect("Failed to upsert game");
@@ -132,22 +122,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Admin gRPC server at {}", admin_addr);
     println!("Starting Draw gRPC server at {}", draw_addr);
 
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel::<bool>(false);
+
+    // Clone the shutdown signal for each server
+    let wagering_shutdown = shutdown_rx.clone();
+    let admin_shutdown = shutdown_rx.clone();
+    let draw_shutdown = shutdown_rx.clone();
+
+    // Spawn a task to wait for the SIGTERM and trigger shutdown
+    tokio::spawn(async move {
+        let mut sigterm = signal(SignalKind::terminate()).expect("Unable to register signal handler");
+        sigterm.recv().await;
+        info!("SIGTERM received, triggering graceful shutdown");
+        let _ = shutdown_tx.send(true);
+    });
+
     let wagering_server = Server::builder()
         .add_service(WageringServer::new(wagering_service))
-        .serve(wagering_addr);
+        .serve_with_shutdown(wagering_addr, async {
+            let mut shutdown = wagering_shutdown.clone();
+            shutdown.changed().await.ok();
+        });
 
     let admin_server = Server::builder()
         .add_service(AdminServer::new(admin_service))
-        .serve(admin_addr);
+        .serve_with_shutdown(admin_addr, async {
+            let mut shutdown = admin_shutdown.clone();
+            shutdown.changed().await.ok();
+        });
 
     let draw_server = Server::builder()
         .add_service(DrawServiceServer::new(draw_service))
-       .serve(draw_addr);
+        .serve_with_shutdown(draw_addr, async {
+            let mut shutdown = draw_shutdown.clone();
+            shutdown.changed().await.ok();
+        });
 
     tokio::try_join!(wagering_server, admin_server, draw_server)?;
-
-    // Wait until we receive interruption
-    let _ = rx.await;
 
     Ok(())
 }

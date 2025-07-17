@@ -32,7 +32,7 @@ impl draw::draw_service_server::DrawService for DrawService {
         let client_locked = self.client.lock().await;
 
         let game_id_option = request.into_inner().game_id;
-        let mut query = "SELECT id, game_id, status, created_at, modified_at, open_time, close_time, draw_time, winset_calculated_at, winset_confirmed_at FROM draws WHERE status = 'Open'".to_string();
+        let mut query = "SELECT id, game_id, status, created_at, modified_at, open_time, close_time, draw_time, winset_calculated_at, winset_confirmed_at FROM draw WHERE status = 'Open'".to_string();
         let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
 
         if let Some(game_id_proto) = &game_id_option {

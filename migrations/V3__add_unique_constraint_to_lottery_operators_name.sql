@@ -1,1 +1,0 @@
-ALTER TABLE lottery_operators ADD CONSTRAINT unique_lottery_operator_name UNIQUE (name);

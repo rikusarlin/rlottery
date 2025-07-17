@@ -5,5 +5,5 @@ use uuid::Uuid;
 pub struct Selection {
     pub id: Uuid,
     pub draw_level_id: Uuid,
-    pub value: i32,
+    pub values: Vec<i32>,
 }

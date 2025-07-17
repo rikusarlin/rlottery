@@ -1,8 +1,8 @@
 use refinery::{Error, Report};
 
-pub mod draws;
+pub mod draw;
 pub mod operator;
-pub mod wagers;
+pub mod wager;
 
 mod migrations {
     use refinery::embed_migrations;

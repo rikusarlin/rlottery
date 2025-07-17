@@ -8,7 +8,7 @@ pub async fn get_active_draws(client: &Client, game_id: Uuid) -> Result<Vec<Draw
     info!("Attempting to get active draws for game_id: {}", game_id);
     let rows = client
         .query(
-            "SELECT id, game_id, status, created_at, modified_at, open_time, close_time, draw_time, winset_calculated_at, winset_confirmed_at FROM draws WHERE game_id = $1 AND status IN ('Created', 'Open')",
+            "SELECT id, game_id, status, created_at, modified_at, open_time, close_time, draw_time, winset_calculated_at, winset_confirmed_at FROM draw WHERE game_id = $1 AND status IN ('Created', 'Open')",
             &[&game_id],
         )
         .await?;
@@ -53,7 +53,7 @@ pub async fn insert_draw(client: &Client, draw: &Draw) -> Result<(), Error> {
     info!("Attempting to insert draw: {:?}", draw);
     client
         .execute(
-            "INSERT INTO draws (game_id, status, created_at, modified_at, open_time, close_time, draw_time) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            "INSERT INTO draw (game_id, status, created_at, modified_at, open_time, close_time, draw_time) VALUES ($1, $2, $3, $4, $5, $6, $7)",
             &[&draw.game_id, &draw.status.to_string(), &draw.created_at, &draw.modified_at, &draw.open_time, &draw.close_time, &draw.draw_time],
         )
         .await?;
@@ -65,7 +65,7 @@ pub async fn get_created_draws_ready_to_open(client: &Client, game_id: Uuid) -> 
     info!("Attempting to get created draws ready to open for game_id: {}", game_id);
     let rows = client
         .query(
-            "SELECT id, game_id, status, created_at, modified_at, open_time, close_time, draw_time, winset_calculated_at, winset_confirmed_at FROM draws WHERE game_id = $1 AND status = 'Created' AND open_time <= $2",
+            "SELECT id, game_id, status, created_at, modified_at, open_time, close_time, draw_time, winset_calculated_at, winset_confirmed_at FROM draw WHERE game_id = $1 AND status = 'Created' AND open_time <= $2",
             &[&game_id, &Utc::now()],
         )
         .await?;
@@ -110,7 +110,7 @@ pub async fn update_draw_status(client: &Client, draw_id: i32, new_status: DrawS
     info!("Attempting to update draw {} status to {:?}", draw_id, new_status);
     client
         .execute(
-            "UPDATE draws SET status = $1, modified_at = $2 WHERE id = $3",
+            "UPDATE draw SET status = $1, modified_at = $2 WHERE id = $3",
             &[&new_status.to_string(), &Utc::now(), &draw_id],
         )
         .await?;

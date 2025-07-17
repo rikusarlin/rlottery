@@ -5,7 +5,7 @@ use crate::core::rng::Rng;
 use uuid::Uuid;
 use tokio_postgres::Client;
 use crate::config::app_config::GameConfig;
-use crate::db::draws;
+use crate::db::draw;
 use tokio_cron_scheduler::{JobScheduler, Job};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -103,7 +103,7 @@ impl DrawManager {
         for level in draw_levels {
             let mut numbers = Vec::new();
             while numbers.len() < level.number_of_selections as usize {
-                let num = (rng.next_u64() % (level.max_value - level.min_value + 1) as u64) as i32
+                let num = (rng.next_u64() % (level.max_value - level.min_value + 1) as u64) as u32
                     + level.min_value;
                 if !numbers.contains(&num) {
                     numbers.push(num);
@@ -127,12 +127,12 @@ impl DrawManager {
         let closed_state_duration = Duration::seconds(game_config.closed_state_duration_seconds as i64);
 
         // Transition created draws to open
-        match draws::get_created_draws_ready_to_open(&client_locked, game_id).await {
+        match draw::get_created_draws_ready_to_open(&client_locked, game_id).await {
             Ok(mut created_draws) => {
                 info!("Found {} created draws ready to open for game_id: {}", created_draws.len(), game_id);
                 for draw in created_draws.iter_mut() {
                     if let Ok(_) = DrawManager::transition_draw_status(draw, DrawStatus::Open) {
-                        match draws::update_draw_status(&client_locked, draw.id, DrawStatus::Open).await {
+                        match draw::update_draw_status(&client_locked, draw.id, DrawStatus::Open).await {
                             Ok(_) => info!("Successfully transitioned draw {} to Open", draw.id),
                             Err(e) => error!("Failed to update draw {} status to Open: {}", draw.id, e),
                         }
@@ -144,7 +144,7 @@ impl DrawManager {
             }
         }
 
-        match draws::get_active_draws(&*client_locked, game_id).await {
+        match draw::get_active_draws(&*client_locked, game_id).await {
             Ok(mut active_draws) => {
                 info!("Found {} active draws for game_id: {}", active_draws.len(), game_id);
 
@@ -180,7 +180,7 @@ impl DrawManager {
                     let open_time = Utc::now(); // Current timestamp upon initial creation
 
                     let new_draw = DrawManager::new_draw(game_id, open_time, close_time, draw_time);
-                    match draws::insert_draw(&*client_locked, &new_draw).await {
+                    match draw::insert_draw(&*client_locked, &new_draw).await {
                         Ok(_) => {
                             info!("Successfully inserted new draw: {:?}", new_draw);
                             active_draws.push(new_draw);

@@ -33,5 +33,5 @@ pub struct Draw {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WinningNumbers {
     pub draw_level_id: Uuid,
-    pub numbers: Vec<i32>,
+    pub numbers: Vec<u32>,
 }

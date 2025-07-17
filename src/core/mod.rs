@@ -6,7 +6,7 @@ pub mod wager;
 pub mod board;
 pub mod selection;
 pub mod win_class;
-pub mod winning;
+pub mod win;
 pub mod audit_log;
 pub mod rng;
 pub mod draw_manager;

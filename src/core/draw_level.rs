@@ -6,7 +6,7 @@ pub struct DrawLevel {
     pub id: Uuid,
     pub game_id: Uuid,
     pub name: String,
-    pub number_of_selections: i32,
-    pub min_value: i32,
-    pub max_value: i32,
+    pub number_of_selections: u32,
+    pub min_value: u32,
+    pub max_value: u32,
 }
