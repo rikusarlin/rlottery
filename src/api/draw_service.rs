@@ -13,7 +13,7 @@ pub mod draw {
 }
 
 pub struct DrawService {
-    client: Arc<Mutex<Client>>,
+    client: Arc<Mutex<Client>>
 }
 
 impl DrawService {

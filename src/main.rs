@@ -110,7 +110,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting gRPC servers...");
 
-    let wagering_service = WageringService::new(client.clone());
+    let app_config = Arc::new(app_config);
+    let wagering_service = WageringService::new(client.clone(), app_config.clone());
     let admin_service = AdminService;
     let draw_service = DrawService::new(client.clone());
 

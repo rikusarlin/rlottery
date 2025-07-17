@@ -6,7 +6,6 @@ pub mod admin {
 
 use admin::{admin_server::Admin, ReceiveExternalDrawNumbersRequest, ReceiveExternalDrawNumbersResponse};
 
-#[derive(Debug, Default)]
 pub struct AdminService;
 
 #[tonic::async_trait]

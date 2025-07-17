@@ -8,17 +8,52 @@ lottery_operator_id = 1
 name = "MyAwesomeLotto"
 open_draws = 15
 allowed_participations = [1, 2, 3, 4, 5, 6, 7, 14]
-allowed_system_game_levels = [7, 8, 9, 10, 11]
 closed_state_duration_seconds = 300
 
 [[game.draw_levels]]
 name = "primary"
 selections = 6
+min_value = 1
+max_value = 40
 
 [[game.draw_levels]]
 name = "secondary"
 selections = 1
 dependent_on = "primary"
+min_value = 1
+max_value = 40
+
+[[game.wager_classes]]
+name="normal"
+selections=["primary"]
+number_of_selections=[6]
+stake_min=100
+stake_max=100
+stake_increment=100
+
+[[game.wager_classes]]
+name="system7"
+selections=["primary"]
+number_of_selections=[7]
+stake_min=700
+stake_max=700
+stake_increment=700
+
+[[game.wager_classes]]
+name="system8"
+selections=["primary"]
+number_of_selections=[8]
+stake_min=2800
+stake_max=2800
+stake_increment=2800
+
+[[game.wager_classes]]
+name="system9"
+selections=["primary"]
+number_of_selections=[9]
+stake_min=8400
+stake_max=8400
+stake_increment=8400
 
 [game.schedule.daily]
 time = "21:50"

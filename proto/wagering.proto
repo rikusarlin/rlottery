@@ -11,14 +11,14 @@ message Uuid {
 
 // Represents a lottery operator configuration.
 message LotteryOperatorConfig {
-  int32 id = 1;
+  uint32 id = 1;
   string name = 2;
 }
 
 // Represents a game configuration.
 message GameConfig {
   Uuid id = 1;
-  int32 lottery_operator_id = 2;
+  uint32 lottery_operator_id = 2;
   string name = 3;
 }
 
@@ -51,7 +51,7 @@ message Draw {
 
 message WinningNumbers {
   Uuid draw_level_id = 1;
-  repeated int32 numbers = 2;
+  repeated uint32 numbers = 2;
 }
 
 // Represents a draw level.
@@ -59,9 +59,9 @@ message DrawLevel {
   Uuid id = 1;
   Uuid game_id = 2;
   string name = 3;
-  int32 number_of_selections = 4;
-  int32 min_value = 5;
-  int32 max_value = 6;
+  uint32 number_of_selections = 4;
+  uint32 min_value = 5;
+  uint32 max_value = 6;
 }
 
 enum GameType {
@@ -73,25 +73,33 @@ enum GameType {
 message Wager {
   Uuid id = 1;
   Uuid user_id = 2;
-  int32 draw_id = 3;
-  GameType game_type = 4;
-  uint32 system_game_level = 5;
-  double stake = 7;
-  double price = 8;
-  google.protobuf.Timestamp created_at = 6;
+  repeated Draw draws = 3;
+  uint32 stake = 4;
+  uint32 price = 5;
+  repeated Board boards = 6;
+  google.protobuf.Timestamp created_at = 7;
 }
 
-// Represents a board.
 message Board {
   Uuid id = 1;
-  repeated Selection selections = 2;
+  GameType game_type = 2;
+  repeated Selection selections = 3;
 }
 
-// Represents a selection.
+message PlaceWagerBoard {
+  GameType game_type = 1;
+  repeated PlaceWagerSelection selections = 2;
+}
+
 message Selection {
   Uuid id = 1;
-  Uuid draw_level_id = 2;
-  int32 value = 3;
+  string name = 2;
+  repeated int32 values = 3;
+}
+
+message PlaceWagerSelection {
+  string name = 1;
+  repeated int32 values = 2;
 }
 
 // Represents a win class type.
@@ -108,11 +116,11 @@ message WinClass {
   Uuid game_id = 2;
   string name = 3;
   WinClassType type = 4;
-  float factor = 5;
-  float constant = 6;
-  float percentage = 7;
-  float min_cap = 8;
-  float max_cap = 9;
+  uint32 factor = 5;
+  uint64 constant = 6;
+  uint32 percentage = 7;
+  uint64 min_cap = 8;
+  uint64 max_cap = 9;
 }
 
 // Represents a winning.
@@ -120,7 +128,7 @@ message Winning {
   Uuid id = 1;
   Uuid wager_id = 2;
   Uuid win_class_id = 3;
-  float amount = 4;
+  uint64 amount = 4;
 }
 
 // Represents an audit log.
@@ -136,16 +144,14 @@ message AuditLog {
 // Request to place a wager.
 message PlaceWagerRequest {
   Uuid user_id = 1;
-  uint32 number_of_draws = 2;
-  repeated Board boards = 3;
+  repeated int32 draws = 2;
+  repeated PlaceWagerBoard boards = 3;
   bool quick_pick = 4;
-  GameType game_type = 5;
-  uint32 system_game_level = 6;
 }
 
 // Response after placing a wager.
 message PlaceWagerResponse {
-  repeated Wager wagers = 1;
+  Wager wager = 1;
 }
 
 // Request to get wager information.

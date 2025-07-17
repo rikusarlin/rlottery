@@ -21,13 +21,16 @@ use wagering::{
     GetWagerResponse,
 };
 
+use crate::config::app_config::Config;
+
 pub struct WageringService{
   client: Arc<Mutex<Client>>,
+  config: Arc<Config>,
 }
 
 impl WageringService {
-    pub fn new(client: Arc<Mutex<Client>>) -> Self {
-        WageringService { client }
+    pub fn new(client: Arc<Mutex<Client>>, config: Arc<Config>) -> Self {
+        WageringService { client, config }
     }
 }
 
@@ -89,15 +92,13 @@ impl wagering::wagering_server::Wagering for WageringService {
             let mut selections = Vec::new();
             for selection_proto in &board_proto.selections {
                 let selection_id = uuid::Uuid::new_v4();
-                let draw_level_uuid = uuid::Uuid::parse_str(&selection_proto.draw_level_id.clone().unwrap_or_default().value).unwrap_or_default();
                 selections.push(crate::core::selection::Selection {
                     id: selection_id,
-                    draw_level_id: draw_level_uuid,
+                    name: selection_proto.name.clone(),
                     values: selection_proto.values.clone(),
                 });
             }
             let game_type_proto = &board_proto.game_type;
-            let system_game_level_proto = &board_proto.system_game_level;
             let game_type = match game_type_proto {
                 0 => GameType::NORMAL,
                 1 => GameType::SYSTEM,
@@ -107,10 +108,58 @@ impl wagering::wagering_server::Wagering for WageringService {
                 id: board_id,
                 wager_id: wager_id,
                 game_type: game_type.clone(),
-                system_game_level: *system_game_level_proto,
                 selections: selections,
             };
             boards.push(new_board);
+        }
+
+        // Validate board selections against config wager_classes
+        for board in &boards {
+            // Match board.game_type to wager_class.name (e.g., "normal", "system7", etc.)
+            let game_type_str = match board.game_type {
+                GameType::NORMAL => "normal".to_string(),
+                GameType::SYSTEM => {
+                    let primary_selection = board.selections.iter().find(|s| s.name == "primary");
+                    let count = primary_selection.map(|s| s.values.len()).unwrap_or(0);
+                    format!("system{}", count)
+                },
+            };
+
+            let maybe_class = self.config.game.wager_classes.iter().find(|wc| wc.name == game_type_str);
+
+            let wager_class = match maybe_class {
+                Some(wc) => wc,
+                None => return Err(Status::invalid_argument(format!(
+                    "Invalid game type or unmatched wager class: {}",
+                    game_type_str
+                ))),
+            };
+
+            for (sel_name, required_count) in wager_class.selections.iter().zip(&wager_class.number_of_selections) {
+                let actual = board.selections.iter().find(|s| &s.name == sel_name);
+                if actual.is_none() {
+                    return Err(Status::invalid_argument(format!(
+                        "Missing selection for '{}'", sel_name
+                    )));
+                }
+
+                let actual_values = &actual.unwrap().values;
+                if actual_values.len() != *required_count as usize {
+                    return Err(Status::invalid_argument(format!(
+                        "Invalid number of values for '{}': expected {}, got {}",
+                        sel_name, required_count, actual_values.len()
+                    )));
+                }
+            }
+
+            // Extra selections not allowed
+            for s in &board.selections {
+                if !wager_class.selections.contains(&s.name) {
+                    return Err(Status::invalid_argument(format!(
+                        "Selection '{}' is not allowed for game type '{}'", s.name, game_type_str
+                    )));
+                }
+            }
         }
 
         let new_wager = crate::core::wager::Wager {
@@ -133,7 +182,7 @@ impl wagering::wagering_server::Wagering for WageringService {
             let proto_selections = board.selections.into_iter().map(|selection| {
                 wagering::Selection {
                     id: Some(wagering::Uuid { value: selection.id.to_string() }),
-                    draw_level_id: Some(wagering::Uuid { value: selection.draw_level_id.to_string() }),
+                    name: selection.name,
                     values: selection.values,
                 }
             }).collect();
@@ -146,7 +195,6 @@ impl wagering::wagering_server::Wagering for WageringService {
             wagering::Board {
                 id: Some(wagering::Uuid { value: board.id.to_string() }),
                 game_type: game_type.into(),
-                system_game_level: board.system_game_level,
                 selections: proto_selections,
             }
         }).collect();
