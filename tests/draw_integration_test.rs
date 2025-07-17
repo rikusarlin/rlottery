@@ -21,7 +21,6 @@ use tokio::{
     process::{Command, Child},
     time::{sleep, timeout},
     io::{AsyncBufReadExt, BufReader},
-    sync::OnceCell,
 };
 use tokio_postgres::NoTls;
 use tonic::transport::Channel;
@@ -169,14 +168,6 @@ RUST_TEST_THREADS = "1"
     temp_file
 }
 
-static TEST_CONTEXT: OnceCell<TestContext> = OnceCell::const_new();
-
-pub async fn get_test_context() -> &'static TestContext {
-    TEST_CONTEXT
-        .get_or_init(setup_test_environment)
-        .await
-}
-
 pub async fn setup_test_environment() -> TestContext {
 
     // Start Postgres test container
@@ -287,10 +278,9 @@ async fn connect_with_retry(port: u16, label: &str) -> Channel {
     panic!("Failed to connect to {} gRPC server after multiple retries", label);
 }
 
-/*
 #[tokio::test]
 async fn test_draw_creation_and_fetch() {
-    let ctx = get_test_context().await;
+    let ctx = setup_test_environment().await;
     let mut draw_client = DrawServiceClient::new(ctx.draw_channel.clone());
 
     // Give some time for draws to be created by the scheduler
@@ -306,11 +296,10 @@ async fn test_draw_creation_and_fetch() {
     assert!(!draws.is_empty(), "No draws found in the database");
     // Further assertions can be added here to check draw content, status, times, etc.
 }
-*/
 
 #[tokio::test]
 async fn test_place_wager_on_open_draws() {
-    let ctx = get_test_context().await;
+    let ctx = setup_test_environment().await;
 
     let mut draw_client = DrawServiceClient::new(ctx.draw_channel.clone());
     let mut wagering_client = WageringClient::new(ctx.wagering_channel.clone());

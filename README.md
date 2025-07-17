@@ -27,10 +27,9 @@ Run project:
 ```
 
 ## Testing
-Currently we only have integration tests that are run sequentially. They don't yet work perfectly,
-and leave clutter behind (both Docker container and Rust server). For now, run as follows (and 
-occasionally delete excess Docker Postgre instances). Furthermore, we can only run one test at a time...
+Currently we only have integration tests. Tests should work when run in parallel, too, but in case 
+they don't you can try the following to run the tests one at a time: 
 
 ```
-RUST_TEST_THREADS=1 cargo test; kill $(lsof -ti :50053)
+RUST_TEST_THREADS=1 cargo test
 ```
